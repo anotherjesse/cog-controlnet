@@ -4,11 +4,12 @@ import os
 import shutil
 import sys
 
-from diffusers import StableDiffusionControlNetPipeline, ControlNetModel, UniPCMultistepScheduler
-
+from diffusers import StableDiffusionPipeline, ControlNetModel
+from transformers import AutoImageProcessor, UperNetForSemanticSegmentation
+import torch
 
 # append project directory to path so predict.py can be imported
-sys.path.append('.')
+sys.path.append(".")
 
 from predict import MODEL_CACHE, BASE_ID, AUX_IDS
 
@@ -16,13 +17,34 @@ if os.path.exists(MODEL_CACHE):
     shutil.rmtree(MODEL_CACHE)
 os.makedirs(MODEL_CACHE, exist_ok=True)
 
+TMP_CACHE = "tmp_cache"
+
+if os.path.exists(TMP_CACHE):
+    shutil.rmtree(TMP_CACHE)
+os.makedirs(TMP_CACHE, exist_ok=True)
+
+pipe = StableDiffusionPipeline.from_pretrained(
+    BASE_ID,
+    torch_dtype=torch.float16,
+    cache_dir=TMP_CACHE,
+)
+pipe.save_pretrained(os.path.join(MODEL_CACHE, BASE_ID))
+
 for model in AUX_IDS:
     aux = ControlNetModel.from_pretrained(
         model,
-        cache_dir=MODEL_CACHE,
+        cache_dir=TMP_CACHE,
     )
-    pipe = StableDiffusionControlNetPipeline.from_pretrained(
-        BASE_ID,
-        controlnet=aux,
-        cache_dir=MODEL_CACHE,
-    )
+    aux = aux.half()
+    aux.save_pretrained(os.path.join(MODEL_CACHE, model))
+
+
+UperNetForSemanticSegmentation.from_pretrained(
+    "openmmlab/upernet-convnext-small", cache_dir=MODEL_CACHE
+)
+
+AutoImageProcessor.from_pretrained(
+    "openmmlab/upernet-convnext-small", cache_dir=MODEL_CACHE
+)
+
+shutil.rmtree(TMP_CACHE)
