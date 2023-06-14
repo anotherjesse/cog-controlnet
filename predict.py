@@ -193,11 +193,9 @@ class Predictor(BasePredictor):
     ) -> List[Path]:
         if len(MISSING_WEIGHTS) > 0:
             raise Exception("missing weights")
-
         pipe = self.select_pipe(structure)
-        # pipe.enable_xformers_memory_efficient_attention()
+        pipe.enable_xformers_memory_efficient_attention()
         pipe.scheduler = SCHEDULERS[scheduler].from_config(pipe.scheduler.config)
-        print(f"scheduler: {scheduler}")
 
         if seed is None:
             seed = int.from_bytes(os.urandom(2), "big")
@@ -212,15 +210,15 @@ class Predictor(BasePredictor):
             high_threshold=high_threshold,
         )
 
-        scale = float(image_resolution) / (min(input_image.size))
+        image_scale = float(image_resolution) / (min(input_image.size))
         
         def quick_rescale(dim, scale):
             """quick rescale to a multiple of 64, as per original controlnet"""
             dim *= scale
             return int(np.round(dim / 64.0)) * 64
         
-        width = quick_rescale(input_image.size[0], scale)
-        height = quick_rescale(input_image.size[1], scale)
+        width = quick_rescale(input_image.size[0], image_scale)
+        height = quick_rescale(input_image.size[1], image_scale)
 
         generator = torch.Generator("cuda").manual_seed(seed)
 
