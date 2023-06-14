@@ -195,8 +195,9 @@ class Predictor(BasePredictor):
             raise Exception("missing weights")
 
         pipe = self.select_pipe(structure)
-        pipe.enable_xformers_memory_efficient_attention()
+        # pipe.enable_xformers_memory_efficient_attention()
         pipe.scheduler = SCHEDULERS[scheduler].from_config(pipe.scheduler.config)
+        print(f"scheduler: {scheduler}")
 
         if seed is None:
             seed = int.from_bytes(os.urandom(2), "big")
