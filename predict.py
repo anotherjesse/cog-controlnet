@@ -132,7 +132,7 @@ class Predictor(BasePredictor):
         prompt: str = Input(description="Prompt for the model"),
         # FIXME: support multiple structures by having inputs canny_image, depth_image, ...
         structure: str = Input(
-            description="Structure to condition on",
+            description="Controlnet structure to condition on",
             choices=[
                 "canny",
                 "depth",
@@ -144,14 +144,14 @@ class Predictor(BasePredictor):
                 "seg",
             ],
         ),
-        num_samples: int = Input(
-            description="Number of samples (higher values may OOM)",
+        num_outputs: int = Input(
+            description="Number of images to output (higher values may OOM)",
             ge=1,
             le=4,
             default=1,
         ),
         image_resolution: int = Input(
-            description="Resolution of image (smallest dimension)",
+            description="Resolution of output image (will be scaled to this as its smaller dimension)",
             choices=[256, 512, 768],
             default=512,
         ),
@@ -208,6 +208,7 @@ class Predictor(BasePredictor):
             structure,
             low_threshold=low_threshold,
             high_threshold=high_threshold,
+            image_resolution=image_resolution,
         )
 
         image_scale = float(image_resolution) / (min(input_image.size))
@@ -231,7 +232,7 @@ class Predictor(BasePredictor):
             guidance_scale=scale,
             eta=eta,
             negative_prompt=negative_prompt,
-            num_images_per_prompt=num_samples,
+            num_images_per_prompt=num_outputs,
             generator=generator,
         )
         output_paths = []
@@ -253,17 +254,17 @@ class Predictor(BasePredictor):
             controlnet=self.controlnets[structure],
         )
 
-    def process_image(self, image, structure, low_threshold=100, high_threshold=200):
+    def process_image(self, image, structure, low_threshold=100, high_threshold=200, image_resolution=512):
         if structure == "canny":
             input_image = self.canny(image, low_threshold, high_threshold)
         elif structure == "depth":
-            input_image = self.midas(image)
+            input_image = self.midas(image, image_resolution=image_resolution)
         elif structure == "hed":
             input_image = self.hed(image)
         elif structure == "hough":
             input_image = self.mlsd(image)
         elif structure == "normal":
-            input_image = self.midas(image, depth_and_normal=True)[1]
+            input_image = self.midas(image, depth_and_normal=True, image_resolution=image_resolution)[1]
         elif structure == "pose":
             input_image = self.pose(image)
         elif structure == "scribble":
