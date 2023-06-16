@@ -34,7 +34,7 @@ class MidasDetector:
 
         return cls(model_type=model_type, model_path=model_path)
         
-    def __call__(self, input_image, a=np.pi * 2.0, bg_th=0.1, depth_and_normal=False, image_resolution=512):
+    def __call__(self, input_image, a=np.pi * 2.0, bg_th=0.0, depth_and_normal=False, image_resolution=512):
         
         input_type = "np"
         if isinstance(input_image, Image.Image):
