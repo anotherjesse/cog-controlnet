@@ -29,7 +29,7 @@ from controlnet_aux import (
     MLSDdetector,
     CannyDetector,
 )
-from controlnet_aux.util import ade_palette
+from controlnet_aux.util import ade_palette, resize_image, HWC3
 from midas_hack import MidasDetector
 
 
@@ -132,7 +132,7 @@ class Predictor(BasePredictor):
         prompt: str = Input(description="Prompt for the model"),
         # FIXME: support multiple structures by having inputs canny_image, depth_image, ...
         structure: str = Input(
-            description="Structure to condition on",
+            description="Controlnet structure to condition on",
             choices=[
                 "canny",
                 "depth",
@@ -144,14 +144,14 @@ class Predictor(BasePredictor):
                 "seg",
             ],
         ),
-        num_samples: int = Input(
-            description="Number of samples (higher values may OOM)",
+        num_outputs: int = Input(
+            description="Number of images to output (higher values may OOM)",
             ge=1,
             le=4,
             default=1,
         ),
         image_resolution: int = Input(
-            description="Resolution of image (smallest dimension)",
+            description="Resolution of output image (will be scaled to this as its smaller dimension)",
             choices=[256, 512, 768],
             default=512,
         ),
@@ -176,6 +176,10 @@ class Predictor(BasePredictor):
             description="Negative prompt",
             default="Longbody, lowres, bad anatomy, bad hands, missing fingers, extra digit, fewer digits, cropped, worst quality, low quality",
         ),
+        return_reference_image: bool = Input(
+            description="whether to return the reference image along with the output",
+            default=False
+        ),
         # Only applicable when model type is 'canny'
         low_threshold: int = Input(
             description="[canny only] Line detection low threshold",
@@ -193,7 +197,6 @@ class Predictor(BasePredictor):
     ) -> List[Path]:
         if len(MISSING_WEIGHTS) > 0:
             raise Exception("missing weights")
-
         pipe = self.select_pipe(structure)
         pipe.enable_xformers_memory_efficient_attention()
         pipe.scheduler = SCHEDULERS[scheduler].from_config(pipe.scheduler.config)
@@ -202,40 +205,46 @@ class Predictor(BasePredictor):
             seed = int.from_bytes(os.urandom(2), "big")
         print(f"Using seed: {seed}")
 
-        # Load input_image
-        input_image = Image.open(image)
-        input_image = self.process_image(
-            input_image,
+        # Load ref_image
+        ref_image = Image.open(image)
+        ref_image = self.process_image(
+            ref_image,
             structure,
             low_threshold=low_threshold,
             high_threshold=high_threshold,
+            image_resolution=image_resolution,
         )
 
-        scale = float(image_resolution) / (min(input_image.size))
+        image_scale = float(image_resolution) / (min(ref_image.size))
         
         def quick_rescale(dim, scale):
             """quick rescale to a multiple of 64, as per original controlnet"""
             dim *= scale
             return int(np.round(dim / 64.0)) * 64
         
-        width = quick_rescale(input_image.size[0], scale)
-        height = quick_rescale(input_image.size[1], scale)
+        width = quick_rescale(ref_image.size[0], image_scale)
+        height = quick_rescale(ref_image.size[1], image_scale)
 
         generator = torch.Generator("cuda").manual_seed(seed)
 
         outputs = pipe(
             prompt,
-            input_image,
+            ref_image,
             height=height,
             width=width,
             num_inference_steps=steps,
             guidance_scale=scale,
             eta=eta,
             negative_prompt=negative_prompt,
-            num_images_per_prompt=num_samples,
+            num_images_per_prompt=num_outputs,
             generator=generator,
         )
         output_paths = []
+        if return_reference_image:
+            ref_path = "/tmp/ref-out.png"
+            ref_image.save(ref_path)
+            output_paths.append(Path(ref_path))
+
         for i, sample in enumerate(outputs.images):
             output_path = f"/tmp/out-{i}.png"
             sample.save(output_path)
@@ -254,24 +263,24 @@ class Predictor(BasePredictor):
             controlnet=self.controlnets[structure],
         )
 
-    def process_image(self, image, structure, low_threshold=100, high_threshold=200):
+    def process_image(self, image, structure, low_threshold=100, high_threshold=200, image_resolution=512):
         if structure == "canny":
-            input_image = self.canny(image, low_threshold, high_threshold)
+            ref_image = self.canny(image, low_threshold, high_threshold)
         elif structure == "depth":
-            input_image = self.midas(image)
+            ref_image = self.midas(image, image_resolution=image_resolution)
         elif structure == "hed":
-            input_image = self.hed(image)
+            ref_image = self.hed(image)
         elif structure == "hough":
-            input_image = self.mlsd(image)
+            ref_image = self.mlsd(image)
         elif structure == "normal":
-            input_image = self.midas(image, depth_and_normal=True)[1]
+            ref_image = self.midas(image, depth_and_normal=True, image_resolution=image_resolution)[1]
         elif structure == "pose":
-            input_image = self.pose(image)
+            ref_image = self.pose(image)
         elif structure == "scribble":
-            input_image = self.hed(image, scribble=True)
+            ref_image = self.hed(image, scribble=True)
         elif structure == "seg":
-            input_image = self.seg_preprocessor(image)
-        return input_image
+            ref_image = self.seg_preprocessor(image)
+        return ref_image
 
     def seg_preprocessor(self, image):
         image = image.convert("RGB")

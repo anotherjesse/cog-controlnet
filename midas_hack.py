@@ -11,7 +11,7 @@ import os
 from huggingface_hub import hf_hub_download
 from einops import rearrange
 from controlnet_aux.midas.api import MiDaSInference
-from controlnet_aux.util import HWC3
+from controlnet_aux.util import HWC3, resize_image
 
 class MidasDetector:
     def __init__(self, model_type="dpt_hybrid", model_path=None):
@@ -34,7 +34,7 @@ class MidasDetector:
 
         return cls(model_type=model_type, model_path=model_path)
         
-    def __call__(self, input_image, a=np.pi * 2.0, bg_th=0.1, depth_and_normal=False):
+    def __call__(self, input_image, a=np.pi * 2.0, bg_th=0.0, depth_and_normal=False, image_resolution=512):
         
         input_type = "np"
         if isinstance(input_image, Image.Image):
@@ -42,7 +42,7 @@ class MidasDetector:
             input_type = "pil"
             
         input_image = HWC3(input_image)
-        image_depth = input_image
+        image_depth = resize_image(input_image, image_resolution)
         with torch.no_grad():
             image_depth = torch.from_numpy(image_depth).float()
             if torch.cuda.is_available():

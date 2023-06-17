@@ -93,6 +93,17 @@ def main():
         seed=42,
         steps=30,
     )
+    gen(
+        "roomgpt.png",
+        structure="hough",
+        prompt="photorealistic picture of living room in Neoclassic, shot by Hasselblad H6D, Zeiss, Kodachrome, extremely detailed",
+        negative_prompt="poorly drawn furniture, poorly drawn room, watermark, text, clipping objects, merging objects, blurred lines, surrealistic, messy floor, dirty, artefacts, longbody, people, cropped, worst quality, low quality",
+        image="https://upcdn.io/12a1xvS/image/uploads/2023/06/12/4mNyQxXP84-4C3C76FE-1F67-4BCC-ABBD-D658AFE84364.jpeg?w=600&h=600&fit=max&q=70",
+        steps=20,
+        scale=9,
+        scheduler="DDIM",
+        image_resolution=512
+    )
 
 
 if __name__ == "__main__":
